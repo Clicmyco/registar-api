@@ -1,13 +1,23 @@
 package com.hsis.registrarapi.dto;
-
+import jakarta.validation.constraints.*;;
 public class CourseDto {
 
-    private String courseCode;
-    private String title;
-    private int credits;
+    @NotBlank(message = "Course code is required")
+@Size(min = 3, max = 15, message = "Course code must be 3 to 15 characters")
+private String courseCode;
 
+@NotBlank(message = "Course title is required")
+private String title;
+
+@Min(value = 1, message = "Credits must be at least 1")
+@Max(value = 6, message = "Credits cannot exceed 6")
+private int credits;
+
+@Min(value = 1, message = "Seat capacity must be at least 1")
+@Max(value = 500, message = "Seat capacity cannot exceed 500")
+private int maxCapacity;
     public CourseDto() {}
-private Integer maxCapacity;
+
 
 public Integer getMaxCapacity() { return maxCapacity; }
 public void setMaxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity; }

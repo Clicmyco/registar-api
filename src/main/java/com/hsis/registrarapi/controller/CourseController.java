@@ -4,6 +4,9 @@ import com.hsis.registrarapi.dto.CourseDto;
 import com.hsis.registrarapi.dto.CourseResponseDto;
 import com.hsis.registrarapi.entity.Course;
 import com.hsis.registrarapi.service.CourseService;
+
+import jakarta.validation.Valid;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -22,14 +25,12 @@ public class CourseController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
-    public ResponseEntity<?> createCourse(@RequestBody CourseDto courseData) {
-        try {
-            Course savedCourse = courseService.createCourse(courseData);
-            return ResponseEntity.ok(savedCourse);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
+   
+    
+public ResponseEntity<Course> createCourse(@Valid @RequestBody CourseDto courseData) {
+    Course savedCourse = courseService.createCourse(courseData);
+    return ResponseEntity.ok(savedCourse);
+}
 
     @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
     @GetMapping
