@@ -1,65 +1,65 @@
 package com.hsis.registrarapi.security;
 
+import com.hsis.registrarapi.entity.User;
+import com.hsis.registrarapi.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import java.util.List;
-import java.util.stream.Collectors;
+
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
+    private final UserRepository userRepository;
 
-    public JwtAuthenticationFilter(JwtUtil jwtUtil) {
+    public JwtAuthenticationFilter(JwtUtil jwtUtil, UserRepository userRepository) {
         this.jwtUtil = jwtUtil;
+        this.userRepository = userRepository;
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) 
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        // 1. Look for the "Authorization" header in the incoming request
         String authHeader = request.getHeader("Authorization");
 
-        // 2. If it's missing, or doesn't start with "Bearer ", ignore it and let the request continue to be blocked
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 3. Cut off the first 7 characters ("Bearer ") to isolate just the JWT string
         String token = authHeader.substring(7);
 
-       
-        // 4. Ask JwtUtil to verify the cryptographic lock
         if (jwtUtil.validateToken(token)) {
-            // 5. If valid, extract the email AND the roles
             String email = jwtUtil.extractEmail(token);
-            List<String> roles = jwtUtil.extractRoles(token);
+            Optional<User> userOpt = userRepository.findByEmail(email);
 
-            // 6. Convert the text roles into official Spring Security badges
-            List<SimpleGrantedAuthority> authorities = roles.stream()
-                    .map(role -> new SimpleGrantedAuthority(role))
-                    .collect(Collectors.toList());
+            // Only authenticate if the account still exists and is active
+            if (userOpt.isPresent() && userOpt.get().isActive()) {
+                User user = userOpt.get();
 
-            // 7. Write the user's identity AND their new badges onto the clipboard
-            UsernamePasswordAuthenticationToken authentication = 
-                    new UsernamePasswordAuthenticationToken(email, null, authorities); // <-- NO MORE EMPTY LIST!
-            
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+                List<SimpleGrantedAuthority> authorities = user.getRoles().stream()
+                        .map(role -> new SimpleGrantedAuthority(role.getName()))
+                        .collect(Collectors.toList());
+
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(email, null, authorities);
+
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
         }
-        
 
-        // 7. Allow the request to move forward to the Controller
         filterChain.doFilter(request, response);
     }
 }

@@ -84,12 +84,16 @@ public class UserService {
             throw new RuntimeException("Invalid email or password"); // Generic error
         }
 
+        if (!existingUser.isActive()) {
+    throw new RuntimeException("Your account has been deactivated. Please contact an administrator.");
+}
+
         // Extract just the String names from the Role objects using a Java Stream
         List<String> roleNames = existingUser.getRoles().stream()
                 .map(Role::getName) // "Grab just the name variable from each Role"
                 .collect(Collectors.toList()); // "Package them into a List"
 
-       
+        
 
         // 3. If they match, print the ID card!
         return jwtUtil.generateToken(existingUser.getEmail() ,roleNames,existingUser.getFullName());
