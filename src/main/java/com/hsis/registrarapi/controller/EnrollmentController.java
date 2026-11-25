@@ -13,6 +13,11 @@ import com.hsis.registrarapi.dto.PendingEnrollmentDto;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.List;
+import com.hsis.registrarapi.dto.TranscriptDto;
+
+
+
+
 
 @RestController
 @RequestMapping("/api/enrollments")
@@ -111,6 +116,24 @@ public class EnrollmentController {
             );
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    // Students view their own official transcript
+    @PreAuthorize("hasRole('STUDENT')")
+    @GetMapping("/transcript")
+    public ResponseEntity<TranscriptDto> getMyTranscript(Principal principal) {
+        return ResponseEntity.ok(enrollmentService.getStudentTranscript(principal.getName()));
+    }
+
+    // Registrars and Admins can inspect any student's official transcript
+    @PreAuthorize("hasAnyRole('REGISTRAR', 'ADMIN')")
+    @GetMapping("/transcript/{userId}")
+    public ResponseEntity<?> getStudentTranscript(@PathVariable Long userId) {
+        try {
+            return ResponseEntity.ok(enrollmentService.getStudentTranscriptByUserId(userId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(e.getMessage());
         }
     }
 

@@ -3,6 +3,7 @@ package com.hsis.registrarapi.service;
 import com.hsis.registrarapi.dto.CourseRosterDto;
 import com.hsis.registrarapi.dto.EnrollmentResponseDto;
 import com.hsis.registrarapi.dto.PendingEnrollmentDto;
+import com.hsis.registrarapi.dto.TranscriptDto;
 import com.hsis.registrarapi.entity.Course;
 import com.hsis.registrarapi.entity.Enrollment;
 import com.hsis.registrarapi.entity.User;
@@ -24,6 +25,18 @@ public class EnrollmentService {
     private static final Set<String> VALID_GRADES = Set.of(
         "A", "A-", "B+", "B", "C+", "C", "D", "F"
     );
+    
+    private static final java.util.Map<String, Double> GRADE_POINTS = java.util.Map.of(
+        "A", 4.0,
+        "A-", 3.75,
+        "B+", 3.5,
+        "B", 3.0,
+        "C+", 2.5,
+        "C", 2.0,
+        "D", 1.0,
+        "F", 0.0
+);
+
     private static final int MAX_SEMESTER_CREDITS = 19;
 
     private final EnrollmentRepository enrollmentRepository;
@@ -306,4 +319,83 @@ if (currentCredits + course.getCredits() > MAX_SEMESTER_CREDITS) {
                         + " in " + enrollment.getCourse().getCourseCode()
         );
     }
+
+     
+    @Transactional(readOnly = true)
+public TranscriptDto getStudentTranscript(String email) {
+    User student = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("Student not found"));
+    return buildTranscript(student);
+}
+
+@Transactional(readOnly = true)
+public TranscriptDto getStudentTranscriptByUserId(Long userId) {
+    User student = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("Student not found"));
+    return buildTranscript(student);
+}
+
+private TranscriptDto buildTranscript(User student) {
+    List<EnrollmentResponseDto> records = enrollmentRepository.findByUserId(student.getId()).stream()
+            .filter(e -> "ENROLLED".equalsIgnoreCase(e.getStatus()))
+            .map(e -> new EnrollmentResponseDto(
+                    e.getId(),
+                    e.getCourse().getId(),
+                    e.getCourse().getCourseCode(),
+                    e.getCourse().getTitle(),
+                    e.getCourse().getCredits(),
+                    e.getStatus(),
+                    e.getEnrollmentDate(),
+                    e.getGrade(),
+                    e.getAdvisorNote()
+            ))
+            .toList();
+
+    int attemptedCredits = 0;
+    int earnedCredits = 0;
+    double totalQualityPoints = 0.0;
+
+    for (EnrollmentResponseDto item : records) {
+        String grade = item.getGrade(); // Use item.grade() if EnrollmentResponseDto is a Java record
+        if (grade != null && GRADE_POINTS.containsKey(grade)) {
+            int credits = item.getCredits(); // Use item.credits() if EnrollmentResponseDto is a Java record
+            double gp = GRADE_POINTS.get(grade);
+            attemptedCredits += credits;
+            totalQualityPoints += gp * credits;
+            if (!"F".equalsIgnoreCase(grade)) {
+                earnedCredits += credits;
+            }
+        }
+    }
+
+    double cumulativeGpa = attemptedCredits > 0
+            ? Math.round((totalQualityPoints / attemptedCredits) * 100.0) / 100.0
+            : 0.0;
+
+    String standing;
+    if (attemptedCredits == 0) {
+        standing = "In Progress (No Graded Credits)";
+    } else if (cumulativeGpa >= 3.50 && earnedCredits >= 12) {
+        standing = "Dean's List";
+    } else if (cumulativeGpa >= 2.00) {
+        standing = "Good Standing";
+    } else {
+        standing = "Academic Probation";
+    }
+
+    return new TranscriptDto(
+            student.getId(),
+            student.getFullName(),
+            student.getEmail(),
+            attemptedCredits,
+            earnedCredits,
+            Math.round(totalQualityPoints * 100.0) / 100.0,
+            cumulativeGpa,
+            standing,
+            LocalDateTime.now(),
+            records
+    );
+}
+
+
 }
