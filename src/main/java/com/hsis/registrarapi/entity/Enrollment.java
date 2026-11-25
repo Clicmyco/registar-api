@@ -30,9 +30,20 @@ public class Enrollment {
     @Column(nullable = false)
     private String status; // e.g., "ENROLLED", "DROPPED", "COMPLETED"
 
+    @Column(name = "advisor_note", length = 500)
+    private String advisorNote;
+
+    @Column(name = "reviewed_by")
+    private String reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;  
+
+
     public Enrollment() {}
 
     // Getters and Setters
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -51,4 +62,14 @@ public class Enrollment {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+
+    public String getAdvisorNote() { return advisorNote; }
+    public void setAdvisorNote(String advisorNote) { this.advisorNote = advisorNote; }
+
+    public String getReviewedBy() { return reviewedBy; }
+    public void setReviewedBy(String reviewedBy) { this.reviewedBy = reviewedBy; }
+
+    public LocalDateTime getReviewedAt() { return reviewedAt; }
+    public void setReviewedAt(LocalDateTime reviewedAt) { this.reviewedAt = reviewedAt; }
 }

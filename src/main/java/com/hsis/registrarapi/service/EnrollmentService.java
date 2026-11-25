@@ -2,6 +2,7 @@ package com.hsis.registrarapi.service;
 
 import com.hsis.registrarapi.dto.CourseRosterDto;
 import com.hsis.registrarapi.dto.EnrollmentResponseDto;
+import com.hsis.registrarapi.dto.PendingEnrollmentDto;
 import com.hsis.registrarapi.entity.Course;
 import com.hsis.registrarapi.entity.Enrollment;
 import com.hsis.registrarapi.entity.User;
@@ -27,17 +28,19 @@ public class EnrollmentService {
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
     private final CourseRepository courseRepository;
+    private final AuditLogService auditLogService;
 
     public EnrollmentService(
             EnrollmentRepository enrollmentRepository,
             UserRepository userRepository,
-            CourseRepository courseRepository) {
+            CourseRepository courseRepository,
+            AuditLogService auditLogService) {
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.courseRepository = courseRepository;
+        this.auditLogService = auditLogService;
     }
 
- 
     @Transactional
     public Enrollment enrollStudent(String email, Long courseId) {
         User user = userRepository.findByEmail(email)
@@ -49,13 +52,18 @@ public class EnrollmentService {
         Optional<Enrollment> existingEnrollment =
                 enrollmentRepository.findByUserIdAndCourseId(user.getId(), course.getId());
 
-        // 1. Block if already actively enrolled
-        if (existingEnrollment.isPresent()
-                && "ENROLLED".equalsIgnoreCase(existingEnrollment.get().getStatus())) {
-            throw new RuntimeException("You are already enrolled in this course!");
+        // 1. Block if already ENROLLED or waiting on PENDING_APPROVAL
+        if (existingEnrollment.isPresent()) {
+            String currentStatus = existingEnrollment.get().getStatus();
+            if ("ENROLLED".equalsIgnoreCase(currentStatus)) {
+                throw new RuntimeException("You are already enrolled in this course!");
+            }
+            if ("PENDING_APPROVAL".equalsIgnoreCase(currentStatus)) {
+                throw new RuntimeException("You already have a pending approval request for this course.");
+            }
         }
 
-        // 2. Enforce seat capacity before enrolling or re-enrolling
+        // 2. Check seat capacity before submitting a request
         long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
         if (activeCount >= course.getMaxCapacity()) {
             throw new RuntimeException(
@@ -63,25 +71,107 @@ public class EnrollmentService {
             );
         }
 
-        // 3. Re-activate if previously DROPPED
-        if (existingEnrollment.isPresent()) {
-            Enrollment dropped = existingEnrollment.get();
-            dropped.setStatus("ENROLLED");
-            dropped.setEnrollmentDate(LocalDateTime.now());
-            return enrollmentRepository.save(dropped);
-        }
+        // 3. Reuse record if previously DROPPED or REJECTED, otherwise create new
+        Enrollment enrollment = existingEnrollment.orElseGet(Enrollment::new);
+        enrollment.setUser(user);
+        enrollment.setCourse(course);
+        enrollment.setEnrollmentDate(LocalDateTime.now());
+        enrollment.setStatus("PENDING_APPROVAL");
+        enrollment.setAdvisorNote(null);
+        enrollment.setReviewedBy(null);
+        enrollment.setReviewedAt(null);
 
-        // 4. Otherwise, create a brand-new enrollment
-        Enrollment newEnrollment = new Enrollment();
-        newEnrollment.setUser(user);
-        newEnrollment.setCourse(course);
-        newEnrollment.setEnrollmentDate(LocalDateTime.now());
-        newEnrollment.setStatus("ENROLLED");
+        Enrollment saved = enrollmentRepository.save(enrollment);
 
-        return enrollmentRepository.save(newEnrollment);
+        auditLogService.log(
+                "ENROLLMENT_REQUESTED",
+                "Enrollment",
+                user.getEmail() + " requested enrollment in " + course.getCourseCode()
+        );
+
+        return saved;
     }
 
-    
+    @Transactional(readOnly = true)
+    public List<PendingEnrollmentDto> getPendingEnrollments() {
+        return enrollmentRepository.findByStatusOrderByEnrollmentDateAsc("PENDING_APPROVAL")
+                .stream()
+                .map(enrollment -> {
+                    Course course = enrollment.getCourse();
+                    User student = enrollment.getUser();
+                    long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
+
+                    return new PendingEnrollmentDto(
+                            enrollment.getId(),
+                            student.getId(),
+                            student.getFullName(),
+                            student.getEmail(),
+                            course.getId(),
+                            course.getCourseCode(),
+                            course.getTitle(),
+                            course.getCredits(),
+                            activeCount,
+                            course.getMaxCapacity(),
+                            enrollment.getEnrollmentDate()
+                    );
+                })
+                .toList();
+    }
+
+    @Transactional
+    public Enrollment reviewEnrollment(Long enrollmentId, boolean approve, String rawNote, String reviewerEmail) {
+        Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
+                .orElseThrow(() -> new RuntimeException("Enrollment request not found."));
+
+        if (!"PENDING_APPROVAL".equalsIgnoreCase(enrollment.getStatus())) {
+            throw new RuntimeException("Only PENDING_APPROVAL requests can be reviewed.");
+        }
+
+        String cleanedNote = (rawNote == null || rawNote.isBlank()) ? null : rawNote.trim();
+
+        if (approve) {
+            Course course = enrollment.getCourse();
+            long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
+            if (activeCount >= course.getMaxCapacity()) {
+                throw new RuntimeException(
+                        "Cannot approve: " + course.getCourseCode() + " is now full ("
+                                + activeCount + "/" + course.getMaxCapacity() + ")."
+                );
+            }
+
+            enrollment.setStatus("ENROLLED");
+            enrollment.setAdvisorNote(cleanedNote);
+            enrollment.setReviewedBy(reviewerEmail);
+            enrollment.setReviewedAt(LocalDateTime.now());
+            Enrollment saved = enrollmentRepository.save(enrollment);
+
+            auditLogService.log(
+                    "ENROLLMENT_APPROVED",
+                    "Enrollment",
+                    "Approved " + enrollment.getUser().getEmail() + " for " + course.getCourseCode()
+            );
+            return saved;
+        } else {
+            if (cleanedNote == null) {
+                throw new RuntimeException("Please provide a brief reason when rejecting an enrollment request.");
+            }
+
+            enrollment.setStatus("REJECTED");
+            enrollment.setAdvisorNote(cleanedNote);
+            enrollment.setReviewedBy(reviewerEmail);
+            enrollment.setReviewedAt(LocalDateTime.now());
+            Enrollment saved = enrollmentRepository.save(enrollment);
+
+            auditLogService.log(
+                    "ENROLLMENT_REJECTED",
+                    "Enrollment",
+                    "Rejected " + enrollment.getUser().getEmail() + " for "
+                            + enrollment.getCourse().getCourseCode() + " (" + cleanedNote + ")"
+            );
+            return saved;
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<EnrollmentResponseDto> getStudentEnrollments(String email) {
         User student = userRepository.findByEmail(email)
@@ -98,7 +188,8 @@ public class EnrollmentService {
                         enrollment.getCourse().getCredits(),
                         enrollment.getStatus(),
                         enrollment.getEnrollmentDate(),
-                        enrollment.getGrade()
+                        enrollment.getGrade(),
+                        enrollment.getAdvisorNote()
                 ))
                 .collect(Collectors.toList());
     }
@@ -112,12 +203,19 @@ public class EnrollmentService {
             throw new RuntimeException("You are not authorized to drop this enrollment!");
         }
 
-        if ("DROPPED".equals(enrollment.getStatus())) {
-            throw new RuntimeException("This course has already been dropped!");
+        if ("DROPPED".equalsIgnoreCase(enrollment.getStatus())
+                || "REJECTED".equalsIgnoreCase(enrollment.getStatus())) {
+            throw new RuntimeException("This course cannot be dropped in its current state.");
         }
 
         enrollment.setStatus("DROPPED");
         enrollmentRepository.save(enrollment);
+
+        auditLogService.log(
+                "COURSE_DROPPED",
+                "Enrollment",
+                email + " dropped " + enrollment.getCourse().getCourseCode()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -146,7 +244,7 @@ public class EnrollmentService {
                 .orElseThrow(() -> new RuntimeException("Enrollment record not found."));
 
         if (!"ENROLLED".equalsIgnoreCase(enrollment.getStatus())) {
-            throw new RuntimeException("Cannot assign a grade to a dropped course.");
+            throw new RuntimeException("Cannot assign a grade unless the student is actively ENROLLED.");
         }
 
         if (rawGrade == null || rawGrade.isBlank()) {
@@ -162,5 +260,12 @@ public class EnrollmentService {
 
         enrollment.setGrade(normalized);
         enrollmentRepository.save(enrollment);
+
+        auditLogService.log(
+                "GRADE_ASSIGNED",
+                "Enrollment",
+                "Assigned grade " + normalized + " to " + enrollment.getUser().getEmail()
+                        + " in " + enrollment.getCourse().getCourseCode()
+        );
     }
 }
