@@ -57,7 +57,7 @@ public class EnrollmentController {
     }
 
     // Only Admins can view the full student roster for a course
-    @PreAuthorize("hasRole('ADMIN','REGISTRAR','ADVISOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR','ADVISOR')")
     @GetMapping("/course/{courseId}")
     public ResponseEntity<?> getCourseRoster(@PathVariable Long courseId) {
         try {
@@ -69,7 +69,7 @@ public class EnrollmentController {
     }
 
     // Only Admins can assign official grades
-    @PreAuthorize("hasRole('ADMIN','REGISTRAR')")
+    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR')")
     @PutMapping("/{enrollmentId}/grade")
     public ResponseEntity<?> assignGrade(
             @PathVariable Long enrollmentId,
