@@ -24,6 +24,7 @@ public class EnrollmentService {
     private static final Set<String> VALID_GRADES = Set.of(
         "A", "A-", "B+", "B", "C+", "C", "D", "F"
     );
+    private static final int MAX_SEMESTER_CREDITS = 19;
 
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
@@ -62,6 +63,43 @@ public class EnrollmentService {
                 throw new RuntimeException("You already have a pending approval request for this course.");
             }
         }
+
+           
+        // 2b. Enforce 19-credit semester limit (counts both ENROLLED and PENDING_APPROVAL)
+int currentCredits = enrollmentRepository.findByUserId(user.getId()).stream()
+        .filter(e -> "ENROLLED".equalsIgnoreCase(e.getStatus())
+                  || "PENDING_APPROVAL".equalsIgnoreCase(e.getStatus()))
+        .mapToInt(e -> e.getCourse().getCredits())
+        .sum();
+
+if (currentCredits + course.getCredits() > MAX_SEMESTER_CREDITS) {
+    throw new RuntimeException(
+            "Credit limit exceeded: You currently have " + currentCredits
+            + " enrolled/pending credits. Adding " + course.getCourseCode()
+            + " (" + course.getCredits() + " Cr) would exceed the "
+            + MAX_SEMESTER_CREDITS + "-credit limit."
+    );
+}
+
+// 2c. Enforce course prerequisite (student must have a passing grade in the prerequisite)
+        Course prerequisite = course.getPrerequisite();
+        if (prerequisite != null) {
+            boolean passedPrerequisite = enrollmentRepository
+                    .findByUserIdAndCourseId(user.getId(), prerequisite.getId())
+                    .map(e -> "ENROLLED".equalsIgnoreCase(e.getStatus())
+                            && e.getGrade() != null
+                            && !"F".equalsIgnoreCase(e.getGrade()))
+                    .orElse(false);
+
+            if (!passedPrerequisite) {
+                throw new RuntimeException(
+                        "Prerequisite required: You must complete and pass "
+                        + prerequisite.getCourseCode() + " (" + prerequisite.getTitle()
+                        + ") before requesting " + course.getCourseCode() + "."
+                );
+            }
+        }
+
 
         // 2. Check seat capacity before submitting a request
         long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");

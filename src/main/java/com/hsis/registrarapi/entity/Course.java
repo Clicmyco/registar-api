@@ -23,6 +23,12 @@ public class Course {
 
     @Column(name = "max_capacity", columnDefinition = "integer default 30")
     private Integer maxCapacity = 30;
+    
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "prerequisite_id")
+    private Course prerequisite;
+
 
     public Course() {}
 
@@ -48,4 +54,6 @@ public class Course {
     public int getCredits() { return credits; }
     public void setCredits(int credits) { this.credits = credits; }
     
+    public Course getPrerequisite() { return prerequisite; }
+    public void setPrerequisite(Course prerequisite) { this.prerequisite = prerequisite; }
 }

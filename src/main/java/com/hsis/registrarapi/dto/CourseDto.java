@@ -18,6 +18,8 @@ private int credits;
 private int maxCapacity;
     public CourseDto() {}
 
+    private Long prerequisiteCourseId;
+
 
 public Integer getMaxCapacity() { return maxCapacity; }
 public void setMaxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity; }
@@ -30,4 +32,8 @@ public void setMaxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity
 
     public int getCredits() { return credits; }
     public void setCredits(int credits) { this.credits = credits; }
+
+    
+    public Long getPrerequisiteCourseId() { return prerequisiteCourseId; }
+    public void setPrerequisiteCourseId(Long prerequisiteCourseId) { this.prerequisiteCourseId = prerequisiteCourseId; }
 }

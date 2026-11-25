@@ -23,7 +23,7 @@ public class CourseController {
         this.courseService = courseService;
     }
 
-    @PreAuthorize("hasRole('ADMIN','REGISTRAR')")
+    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR')")
     @PostMapping
    
     
