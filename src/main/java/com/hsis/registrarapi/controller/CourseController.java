@@ -23,7 +23,7 @@ public class CourseController {
         this.courseService = courseService;
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN','REGISTRAR')")
     @PostMapping
    
     
@@ -32,7 +32,7 @@ public ResponseEntity<Course> createCourse(@Valid @RequestBody CourseDto courseD
     return ResponseEntity.ok(savedCourse);
 }
 
-    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN','REGISTRAR','ADVISOR')")
     @GetMapping
     public ResponseEntity<List<CourseResponseDto>> getAllCourses() {
         List<CourseResponseDto> courses = courseService.getAllCourses();

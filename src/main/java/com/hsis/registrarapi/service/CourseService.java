@@ -15,12 +15,13 @@ import java.util.List;
 public class CourseService {
 
     
-
+    private final AuditLogService auditLogService;
     private final CourseRepository courseRepository;
     private EnrollmentRepository enrollmentRepository;
-    public CourseService(CourseRepository courseRepository , EnrollmentRepository enrollmentRepository) {
+    public CourseService(CourseRepository courseRepository , EnrollmentRepository enrollmentRepository, AuditLogService auditLogService) {
         this.courseRepository = courseRepository;
         this.enrollmentRepository=enrollmentRepository;
+        this.auditLogService=auditLogService;
     }
 
     public Course createCourse(CourseDto courseData) {
@@ -37,8 +38,17 @@ public class CourseService {
         newCourse.setCredits(courseData.getCredits());
         newCourse.setMaxCapacity(courseData.getMaxCapacity());
         // 3. Save to database
-        return courseRepository.save(newCourse);
+        Course saved = courseRepository.save(newCourse);
+ 
+        auditLogService.log(
+    "COURSE_CREATED",
+    "Course",
+    "Created course " + saved.getCourseCode() + " (" + saved.getTitle() + ")"
+);
+return saved;
+        
     }
+    
 
     // Fetch every course from the database
 
