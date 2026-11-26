@@ -33,7 +33,7 @@ public class CourseService {
         this.academicTermRepository = academicTermRepository;
     }
 
-   @Transactional
+    @Transactional
     public Course createCourse(CourseDto courseData) {
         Optional<Course> existingCourse = courseRepository.findByCourseCode(courseData.getCourseCode());
         if (existingCourse.isPresent()) {
@@ -107,11 +107,10 @@ public class CourseService {
                             course.getMeetingDays(),
                             course.getStartTime(),
                             course.getEndTime(),
-                            course.getRoom()
+                            course.getRoom(),
+                            enrollmentRepository.countByCourseIdAndStatus(course.getId(), "WAITLISTED")
                     );
                 })
                 .collect(Collectors.toList());
     }
-
-   
 }

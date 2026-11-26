@@ -18,6 +18,7 @@ public class CourseResponseDto {
     private LocalTime startTime;
     private LocalTime endTime;
     private String room;
+    private long waitlistCount;
 
     public CourseResponseDto(
             Long id,
@@ -33,7 +34,8 @@ public class CourseResponseDto {
             String meetingDays,
             LocalTime startTime,
             LocalTime endTime,
-            String room) {
+            String room,
+            long waitlistCount) {
         this.id = id;
         this.courseCode = courseCode;
         this.title = title;
@@ -48,6 +50,7 @@ public class CourseResponseDto {
         this.startTime = startTime;
         this.endTime = endTime;
         this.room = room;
+        this.waitlistCount = waitlistCount;
     }
 
     public Long getId() { return id; }
@@ -64,4 +67,5 @@ public class CourseResponseDto {
     public LocalTime getStartTime() { return startTime; }
     public LocalTime getEndTime() { return endTime; }
     public String getRoom() { return room; }
+    public long getWaitlistCount() { return waitlistCount; }
 }

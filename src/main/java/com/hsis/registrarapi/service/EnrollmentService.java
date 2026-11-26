@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -84,7 +85,7 @@ public class EnrollmentService {
             );
         }
 
-        // 1. Block if already ENROLLED or waiting on PENDING_APPROVAL
+        // 1. Block if already ENROLLED, PENDING_APPROVAL, or WAITLISTED
         if (existingEnrollment.isPresent()) {
             String currentStatus = existingEnrollment.get().getStatus();
             if ("ENROLLED".equalsIgnoreCase(currentStatus)) {
@@ -93,13 +94,17 @@ public class EnrollmentService {
             if ("PENDING_APPROVAL".equalsIgnoreCase(currentStatus)) {
                 throw new RuntimeException("You already have a pending approval request for this course.");
             }
+            if ("WAITLISTED".equalsIgnoreCase(currentStatus)) {
+                throw new RuntimeException("You are already on the waitlist for this course.");
+            }
         }
 
-        // 2a. Enforce 19-credit limit for the target semester
+        // 2a. Enforce 19-credit limit for the target semester (includes waitlisted courses)
         Long targetTermId = targetTerm != null ? targetTerm.getId() : null;
         int currentCredits = enrollmentRepository.findByUserId(user.getId()).stream()
                 .filter(e -> "ENROLLED".equalsIgnoreCase(e.getStatus())
-                          || "PENDING_APPROVAL".equalsIgnoreCase(e.getStatus()))
+                          || "PENDING_APPROVAL".equalsIgnoreCase(e.getStatus())
+                          || "WAITLISTED".equalsIgnoreCase(e.getStatus()))
                 .filter(e -> {
                     if (targetTermId == null) return true;
                     AcademicTerm eTerm = e.getCourse().getTerm();
@@ -111,7 +116,7 @@ public class EnrollmentService {
         if (currentCredits + course.getCredits() > MAX_SEMESTER_CREDITS) {
             throw new RuntimeException(
                     "Credit limit exceeded: You currently have " + currentCredits
-                    + " enrolled/pending credits"
+                    + " enrolled/pending/waitlisted credits"
                     + (targetTerm != null ? " in " + targetTerm.getName() : "")
                     + ". Adding " + course.getCourseCode() + " (" + course.getCredits()
                     + " Cr) would exceed the " + MAX_SEMESTER_CREDITS + "-credit limit."
@@ -136,22 +141,19 @@ public class EnrollmentService {
                 );
             }
         }
-         
-        validateNoTimeConflict(user, course, targetTerm);
-        // 2c. Check seat capacity before submitting a request
-        long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
-        if (activeCount >= course.getMaxCapacity()) {
-            throw new RuntimeException(
-                    "This course is full (" + activeCount + "/" + course.getMaxCapacity() + " seats taken)."
-            );
-        }
 
-        // 3. Reuse record if previously DROPPED or REJECTED, otherwise create new
+        // 2c. Enforce schedule overlap check across enrolled, pending, and waitlisted courses
+        validateNoTimeConflict(user, course, targetTerm);
+
+        // 3. Place on WAITLISTED if full, otherwise submit for PENDING_APPROVAL
+        long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
+        boolean isFull = activeCount >= course.getMaxCapacity();
+
         Enrollment enrollment = existingEnrollment.orElseGet(Enrollment::new);
         enrollment.setUser(user);
         enrollment.setCourse(course);
         enrollment.setEnrollmentDate(LocalDateTime.now());
-        enrollment.setStatus("PENDING_APPROVAL");
+        enrollment.setStatus(isFull ? "WAITLISTED" : "PENDING_APPROVAL");
         enrollment.setAdvisorNote(null);
         enrollment.setReviewedBy(null);
         enrollment.setReviewedAt(null);
@@ -159,9 +161,10 @@ public class EnrollmentService {
         Enrollment saved = enrollmentRepository.save(enrollment);
 
         auditLogService.log(
-                "ENROLLMENT_REQUESTED",
+                isFull ? "ENROLLMENT_WAITLISTED" : "ENROLLMENT_REQUESTED",
                 "Enrollment",
-                user.getEmail() + " requested enrollment in " + course.getCourseCode()
+                user.getEmail() + (isFull ? " joined waitlist for " : " requested enrollment in ")
+                        + course.getCourseCode()
         );
 
         return saved;
@@ -243,6 +246,8 @@ public class EnrollmentService {
                     "Rejected " + enrollment.getUser().getEmail() + " for "
                             + enrollment.getCourse().getCourseCode() + " (" + cleanedNote + ")"
             );
+
+            promoteNextFromWaitlist(enrollment.getCourse());
             return saved;
         }
     }
@@ -271,7 +276,9 @@ public class EnrollmentService {
             throw new RuntimeException("This course cannot be dropped in its current state.");
         }
 
-        if ("ENROLLED".equalsIgnoreCase(enrollment.getStatus())) {
+        boolean wasEnrolled = "ENROLLED".equalsIgnoreCase(enrollment.getStatus());
+
+        if (wasEnrolled) {
             AcademicTerm courseTerm = enrollment.getCourse().getTerm() != null
                     ? enrollment.getCourse().getTerm()
                     : academicTermRepository.findByActiveTrue().orElse(null);
@@ -294,6 +301,10 @@ public class EnrollmentService {
                 "Enrollment",
                 email + " dropped " + enrollment.getCourse().getCourseCode()
         );
+
+        if (wasEnrolled) {
+            promoteNextFromWaitlist(enrollment.getCourse());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -411,75 +422,114 @@ public class EnrollmentService {
         );
     }
 
-private EnrollmentResponseDto mapToResponseDto(Enrollment enrollment) {
-     Course c = enrollment.getCourse();
-     AcademicTerm term = c.getTerm();
-     return new EnrollmentResponseDto(
-             enrollment.getId(),
-             c.getId(),
-             c.getCourseCode(),
-             c.getTitle(),
-             c.getCredits(),
-             enrollment.getStatus(),
-             enrollment.getEnrollmentDate(),
-             enrollment.getGrade(),
-             enrollment.getAdvisorNote(),
-             term != null ? term.getCode() : null,
-             term != null ? term.getName() : null,
-             c.getMeetingDays(),
-             c.getStartTime(),
-             c.getEndTime(),
-             c.getRoom()
-     );
- }
+    private void promoteNextFromWaitlist(Course course) {
+        long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
+        if (activeCount >= course.getMaxCapacity()) {
+            return;
+        }
 
- private void validateNoTimeConflict(User user, Course candidate, AcademicTerm targetTerm) {
-     if (candidate.getMeetingDays() == null || candidate.getMeetingDays().isBlank()
-             || candidate.getStartTime() == null || candidate.getEndTime() == null) {
-         return;
-     }
+        List<Enrollment> queue = enrollmentRepository
+                .findByCourseIdAndStatusOrderByEnrollmentDateAsc(course.getId(), "WAITLISTED");
 
-     Set<String> candidateDays = parseDays(candidate.getMeetingDays());
-     Long targetTermId = targetTerm != null ? targetTerm.getId() : null;
+        if (!queue.isEmpty()) {
+            Enrollment nextInLine = queue.get(0);
+            nextInLine.setStatus("PENDING_APPROVAL");
+            nextInLine.setEnrollmentDate(LocalDateTime.now());
+            nextInLine.setAdvisorNote("Auto-promoted from waitlist");
+            enrollmentRepository.save(nextInLine);
 
-     List<Enrollment> activeOrPending = enrollmentRepository.findByUserId(user.getId()).stream()
-             .filter(e -> "ENROLLED".equalsIgnoreCase(e.getStatus())
-                       || "PENDING_APPROVAL".equalsIgnoreCase(e.getStatus()))
-             .filter(e -> {
-                 if (targetTermId == null) return true;
-                 AcademicTerm existingTerm = e.getCourse().getTerm();
-                 return existingTerm == null || targetTermId.equals(existingTerm.getId());
-             })
-             .toList();
+            auditLogService.log(
+                    "WAITLIST_PROMOTED",
+                    "Enrollment",
+                    "Auto-promoted " + nextInLine.getUser().getEmail()
+                            + " from waitlist to PENDING_APPROVAL for " + course.getCourseCode()
+            );
+        }
+    }
 
-     for (Enrollment existing : activeOrPending) {
-         Course other = existing.getCourse();
-         if (other.getMeetingDays() == null || other.getStartTime() == null || other.getEndTime() == null) {
-             continue;
-         }
+    private EnrollmentResponseDto mapToResponseDto(Enrollment enrollment) {
+        Course c = enrollment.getCourse();
+        AcademicTerm term = c.getTerm();
 
-         Set<String> otherDays = parseDays(other.getMeetingDays());
-         boolean sharesDay = candidateDays.stream().anyMatch(otherDays::contains);
-         boolean timesOverlap = candidate.getStartTime().isBefore(other.getEndTime())
-                 && other.getStartTime().isBefore(candidate.getEndTime());
+        Integer waitlistPosition = null;
+        if ("WAITLISTED".equalsIgnoreCase(enrollment.getStatus())) {
+            List<Enrollment> queue = enrollmentRepository
+                    .findByCourseIdAndStatusOrderByEnrollmentDateAsc(c.getId(), "WAITLISTED");
+            for (int i = 0; i < queue.size(); i++) {
+                if (queue.get(i).getId().equals(enrollment.getId())) {
+                    waitlistPosition = i + 1;
+                    break;
+                }
+            }
+        }
 
-         if (sharesDay && timesOverlap) {
-             throw new RuntimeException(
-                     "Schedule conflict: " + candidate.getCourseCode()
-                     + " (" + candidate.getMeetingDays() + " " + candidate.getStartTime() + "-" + candidate.getEndTime() + ")"
-                     + " overlaps with " + other.getCourseCode()
-                     + " (" + other.getMeetingDays() + " " + other.getStartTime() + "-" + other.getEndTime() + ")."
-             );
-         }
-     }
- }
+        return new EnrollmentResponseDto(
+                enrollment.getId(),
+                c.getId(),
+                c.getCourseCode(),
+                c.getTitle(),
+                c.getCredits(),
+                enrollment.getStatus(),
+                enrollment.getEnrollmentDate(),
+                enrollment.getGrade(),
+                enrollment.getAdvisorNote(),
+                term != null ? term.getCode() : null,
+                term != null ? term.getName() : null,
+                c.getMeetingDays(),
+                c.getStartTime(),
+                c.getEndTime(),
+                c.getRoom(),
+                waitlistPosition
+        );
+    }
 
- private Set<String> parseDays(String rawDays) {
-     return java.util.Arrays.stream(rawDays.split(","))
-             .map(String::trim)
-             .map(String::toUpperCase)
-             .filter(s -> !s.isEmpty())
-             .collect(Collectors.toSet());
- }
+    private void validateNoTimeConflict(User user, Course candidate, AcademicTerm targetTerm) {
+        if (candidate.getMeetingDays() == null || candidate.getMeetingDays().isBlank()
+                || candidate.getStartTime() == null || candidate.getEndTime() == null) {
+            return;
+        }
 
+        Set<String> candidateDays = parseDays(candidate.getMeetingDays());
+        Long targetTermId = targetTerm != null ? targetTerm.getId() : null;
+
+        List<Enrollment> activeOrPending = enrollmentRepository.findByUserId(user.getId()).stream()
+                .filter(e -> "ENROLLED".equalsIgnoreCase(e.getStatus())
+                          || "PENDING_APPROVAL".equalsIgnoreCase(e.getStatus())
+                          || "WAITLISTED".equalsIgnoreCase(e.getStatus()))
+                .filter(e -> {
+                    if (targetTermId == null) return true;
+                    AcademicTerm existingTerm = e.getCourse().getTerm();
+                    return existingTerm == null || targetTermId.equals(existingTerm.getId());
+                })
+                .toList();
+
+        for (Enrollment existing : activeOrPending) {
+            Course other = existing.getCourse();
+            if (other.getMeetingDays() == null || other.getStartTime() == null || other.getEndTime() == null) {
+                continue;
+            }
+
+            Set<String> otherDays = parseDays(other.getMeetingDays());
+            boolean sharesDay = candidateDays.stream().anyMatch(otherDays::contains);
+            boolean timesOverlap = candidate.getStartTime().isBefore(other.getEndTime())
+                    && other.getStartTime().isBefore(candidate.getEndTime());
+
+            if (sharesDay && timesOverlap) {
+                throw new RuntimeException(
+                        "Schedule conflict: " + candidate.getCourseCode()
+                        + " (" + candidate.getMeetingDays() + " " + candidate.getStartTime() + "-" + candidate.getEndTime() + ")"
+                        + " overlaps with " + other.getCourseCode()
+                        + " (" + other.getMeetingDays() + " " + other.getStartTime() + "-" + other.getEndTime() + ")."
+                );
+            }
+        }
+    }
+
+    private Set<String> parseDays(String rawDays) {
+        return Arrays.stream(rawDays.split(","))
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
+    }
 }
