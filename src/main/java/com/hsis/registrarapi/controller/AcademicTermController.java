@@ -31,7 +31,7 @@ public class AcademicTermController {
         }
     }
 
-    @PreAuthorize("hasAnyRole('REGISTRAR', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('REGISTRAR', 'ADMIN','ADVISOR','STUDENT')")
     @GetMapping
     public ResponseEntity<List<AcademicTerm>> getAllTerms() {
         return ResponseEntity.ok(termService.getAllTerms());
