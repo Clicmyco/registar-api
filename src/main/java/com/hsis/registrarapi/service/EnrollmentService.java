@@ -7,6 +7,7 @@ import com.hsis.registrarapi.dto.TranscriptDto;
 import com.hsis.registrarapi.entity.Course;
 import com.hsis.registrarapi.entity.Enrollment;
 import com.hsis.registrarapi.entity.User;
+import com.hsis.registrarapi.repository.AcademicTermRepository;
 import com.hsis.registrarapi.repository.CourseRepository;
 import com.hsis.registrarapi.repository.EnrollmentRepository;
 import com.hsis.registrarapi.repository.UserRepository;
@@ -38,7 +39,7 @@ public class EnrollmentService {
 );
 
     private static final int MAX_SEMESTER_CREDITS = 19;
-
+    private final AcademicTermRepository academicTermRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final UserRepository userRepository;
     private final CourseRepository courseRepository;
@@ -48,12 +49,17 @@ public class EnrollmentService {
             EnrollmentRepository enrollmentRepository,
             UserRepository userRepository,
             CourseRepository courseRepository,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            AcademicTermRepository academicTermRepository
+        ) {
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.courseRepository = courseRepository;
         this.auditLogService = auditLogService;
+        this.academicTermRepository=academicTermRepository;
     }
+
+    
 
     @Transactional
     public Enrollment enrollStudent(String email, Long courseId) {
@@ -65,6 +71,14 @@ public class EnrollmentService {
 
         Optional<Enrollment> existingEnrollment =
                 enrollmentRepository.findByUserIdAndCourseId(user.getId(), course.getId());
+
+                academicTermRepository.findByActiveTrue().ifPresent(term -> {
+    if (!term.isRegistrationOpen()) {
+        throw new RuntimeException(
+                "Registration is currently closed for " + term.getName() + "."
+        );
+    }
+});
 
         // 1. Block if already ENROLLED or waiting on PENDING_APPROVAL
         if (existingEnrollment.isPresent()) {
@@ -258,6 +272,19 @@ if (currentCredits + course.getCredits() > MAX_SEMESTER_CREDITS) {
                 || "REJECTED".equalsIgnoreCase(enrollment.getStatus())) {
             throw new RuntimeException("This course cannot be dropped in its current state.");
         }
+
+         
+        if ("ENROLLED".equalsIgnoreCase(enrollment.getStatus())) {
+    academicTermRepository.findByActiveTrue().ifPresent(term -> {
+        if (term.getAddDropDeadline() != null
+                && java.time.LocalDate.now().isAfter(term.getAddDropDeadline())) {
+            throw new RuntimeException(
+                    "The add/drop deadline (" + term.getAddDropDeadline()
+                    + ") for " + term.getName() + " has passed."
+            );
+        }
+    });
+}
 
         enrollment.setStatus("DROPPED");
         enrollmentRepository.save(enrollment);
