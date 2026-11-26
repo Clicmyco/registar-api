@@ -34,6 +34,18 @@ public class Course {
     @JoinColumn(name = "term_id")
     private AcademicTerm term;
 
+    @Column(name = "meeting_days", length = 30)
+    private String meetingDays; // Normalized comma-separated codes: e.g., "MON,WED,FRI"
+
+    @Column(name = "start_time")
+    private java.time.LocalTime startTime;
+
+    @Column(name = "end_time")
+    private java.time.LocalTime endTime;
+
+    @Column(length = 50)
+    private String room;
+
     public Course() {}
 
     // Getters and Setters
@@ -63,4 +75,16 @@ public class Course {
 
     public AcademicTerm getTerm() { return term; }
     public void setTerm(AcademicTerm term) { this.term = term; }
+
+    public String getMeetingDays() { return meetingDays; }
+    public void setMeetingDays(String meetingDays) { this.meetingDays = meetingDays; }
+
+    public java.time.LocalTime getStartTime() { return startTime; }
+    public void setStartTime(java.time.LocalTime startTime) { this.startTime = startTime; }
+
+    public java.time.LocalTime getEndTime() { return endTime; }
+    public void setEndTime(java.time.LocalTime endTime) { this.endTime = endTime; }
+
+    public String getRoom() { return room; }
+    public void setRoom(String room) { this.room = room; }
 }

@@ -33,11 +33,16 @@ public class CourseService {
         this.academicTermRepository = academicTermRepository;
     }
 
-    @Transactional
+   @Transactional
     public Course createCourse(CourseDto courseData) {
         Optional<Course> existingCourse = courseRepository.findByCourseCode(courseData.getCourseCode());
         if (existingCourse.isPresent()) {
             throw new RuntimeException("A course with this code already exists!");
+        }
+
+        if (courseData.getStartTime() != null && courseData.getEndTime() != null
+                && !courseData.getStartTime().isBefore(courseData.getEndTime())) {
+            throw new RuntimeException("Course end time must be after start time.");
         }
 
         Course newCourse = new Course();
@@ -46,13 +51,21 @@ public class CourseService {
         newCourse.setCredits(courseData.getCredits());
         newCourse.setMaxCapacity(courseData.getMaxCapacity());
 
+        if (courseData.getMeetingDays() != null && !courseData.getMeetingDays().isBlank()) {
+            newCourse.setMeetingDays(courseData.getMeetingDays().trim().toUpperCase());
+        }
+        newCourse.setStartTime(courseData.getStartTime());
+        newCourse.setEndTime(courseData.getEndTime());
+        if (courseData.getRoom() != null && !courseData.getRoom().isBlank()) {
+            newCourse.setRoom(courseData.getRoom().trim());
+        }
+
         if (courseData.getPrerequisiteCourseId() != null) {
             Course prereq = courseRepository.findById(courseData.getPrerequisiteCourseId())
                     .orElseThrow(() -> new RuntimeException("Prerequisite course not found."));
             newCourse.setPrerequisite(prereq);
         }
 
-        // Attach specified term, or default to the currently active term
         AcademicTerm term = (courseData.getTermId() != null)
                 ? academicTermRepository.findById(courseData.getTermId())
                         .orElseThrow(() -> new RuntimeException("Academic term not found."))
@@ -90,9 +103,15 @@ public class CourseService {
                             course.getPrerequisite() != null ? course.getPrerequisite().getCourseCode() : null,
                             term != null ? term.getId() : null,
                             term != null ? term.getCode() : null,
-                            term != null ? term.getName() : null
+                            term != null ? term.getName() : null,
+                            course.getMeetingDays(),
+                            course.getStartTime(),
+                            course.getEndTime(),
+                            course.getRoom()
                     );
                 })
                 .collect(Collectors.toList());
     }
+
+   
 }

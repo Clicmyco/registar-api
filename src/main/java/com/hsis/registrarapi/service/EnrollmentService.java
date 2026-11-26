@@ -136,7 +136,8 @@ public class EnrollmentService {
                 );
             }
         }
-
+         
+        validateNoTimeConflict(user, course, targetTerm);
         // 2c. Check seat capacity before submitting a request
         long activeCount = enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED");
         if (activeCount >= course.getMaxCapacity()) {
@@ -410,20 +411,75 @@ public class EnrollmentService {
         );
     }
 
-    private EnrollmentResponseDto mapToResponseDto(Enrollment enrollment) {
-        AcademicTerm term = enrollment.getCourse().getTerm();
-        return new EnrollmentResponseDto(
-                enrollment.getId(),
-                enrollment.getCourse().getId(),
-                enrollment.getCourse().getCourseCode(),
-                enrollment.getCourse().getTitle(),
-                enrollment.getCourse().getCredits(),
-                enrollment.getStatus(),
-                enrollment.getEnrollmentDate(),
-                enrollment.getGrade(),
-                enrollment.getAdvisorNote(),
-                term != null ? term.getCode() : null,
-                term != null ? term.getName() : null
-        );
-    }
+private EnrollmentResponseDto mapToResponseDto(Enrollment enrollment) {
+     Course c = enrollment.getCourse();
+     AcademicTerm term = c.getTerm();
+     return new EnrollmentResponseDto(
+             enrollment.getId(),
+             c.getId(),
+             c.getCourseCode(),
+             c.getTitle(),
+             c.getCredits(),
+             enrollment.getStatus(),
+             enrollment.getEnrollmentDate(),
+             enrollment.getGrade(),
+             enrollment.getAdvisorNote(),
+             term != null ? term.getCode() : null,
+             term != null ? term.getName() : null,
+             c.getMeetingDays(),
+             c.getStartTime(),
+             c.getEndTime(),
+             c.getRoom()
+     );
+ }
+
+ private void validateNoTimeConflict(User user, Course candidate, AcademicTerm targetTerm) {
+     if (candidate.getMeetingDays() == null || candidate.getMeetingDays().isBlank()
+             || candidate.getStartTime() == null || candidate.getEndTime() == null) {
+         return;
+     }
+
+     Set<String> candidateDays = parseDays(candidate.getMeetingDays());
+     Long targetTermId = targetTerm != null ? targetTerm.getId() : null;
+
+     List<Enrollment> activeOrPending = enrollmentRepository.findByUserId(user.getId()).stream()
+             .filter(e -> "ENROLLED".equalsIgnoreCase(e.getStatus())
+                       || "PENDING_APPROVAL".equalsIgnoreCase(e.getStatus()))
+             .filter(e -> {
+                 if (targetTermId == null) return true;
+                 AcademicTerm existingTerm = e.getCourse().getTerm();
+                 return existingTerm == null || targetTermId.equals(existingTerm.getId());
+             })
+             .toList();
+
+     for (Enrollment existing : activeOrPending) {
+         Course other = existing.getCourse();
+         if (other.getMeetingDays() == null || other.getStartTime() == null || other.getEndTime() == null) {
+             continue;
+         }
+
+         Set<String> otherDays = parseDays(other.getMeetingDays());
+         boolean sharesDay = candidateDays.stream().anyMatch(otherDays::contains);
+         boolean timesOverlap = candidate.getStartTime().isBefore(other.getEndTime())
+                 && other.getStartTime().isBefore(candidate.getEndTime());
+
+         if (sharesDay && timesOverlap) {
+             throw new RuntimeException(
+                     "Schedule conflict: " + candidate.getCourseCode()
+                     + " (" + candidate.getMeetingDays() + " " + candidate.getStartTime() + "-" + candidate.getEndTime() + ")"
+                     + " overlaps with " + other.getCourseCode()
+                     + " (" + other.getMeetingDays() + " " + other.getStartTime() + "-" + other.getEndTime() + ")."
+             );
+         }
+     }
+ }
+
+ private Set<String> parseDays(String rawDays) {
+     return java.util.Arrays.stream(rawDays.split(","))
+             .map(String::trim)
+             .map(String::toUpperCase)
+             .filter(s -> !s.isEmpty())
+             .collect(Collectors.toSet());
+ }
+
 }

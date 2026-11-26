@@ -20,6 +20,23 @@ private int maxCapacity;
 
     private Long prerequisiteCourseId;
 
+  private String meetingDays;
+    private java.time.LocalTime startTime;
+    private java.time.LocalTime endTime;
+    private String room;
+
+    public String getMeetingDays() { return meetingDays; }
+    public void setMeetingDays(String meetingDays) { this.meetingDays = meetingDays; }
+
+    public java.time.LocalTime getStartTime() { return startTime; }
+    public void setStartTime(java.time.LocalTime startTime) { this.startTime = startTime; }
+
+    public java.time.LocalTime getEndTime() { return endTime; }
+    public void setEndTime(java.time.LocalTime endTime) { this.endTime = endTime; }
+
+    public String getRoom() { return room; }
+    public void setRoom(String room) { this.room = room; }
+
 
 public Integer getMaxCapacity() { return maxCapacity; }
 public void setMaxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity; }
