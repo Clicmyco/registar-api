@@ -32,10 +32,11 @@ public ResponseEntity<Course> createCourse(@Valid @RequestBody CourseDto courseD
     return ResponseEntity.ok(savedCourse);
 }
 
-    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN','REGISTRAR','ADVISOR')")
+    @PreAuthorize("hasAnyRole('STUDENT', 'ADMIN', 'REGISTRAR', 'ADVISOR')")
     @GetMapping
-    public ResponseEntity<List<CourseResponseDto>> getAllCourses() {
-        List<CourseResponseDto> courses = courseService.getAllCourses();
+    public ResponseEntity<List<CourseResponseDto>> getAllCourses(
+            @RequestParam(required = false) Long termId) {
+        List<CourseResponseDto> courses = courseService.getAllCourses(termId);
         return ResponseEntity.ok(courses);
     }
 }

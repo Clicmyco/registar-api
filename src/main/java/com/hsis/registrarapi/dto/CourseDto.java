@@ -36,4 +36,9 @@ public void setMaxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity
     
     public Long getPrerequisiteCourseId() { return prerequisiteCourseId; }
     public void setPrerequisiteCourseId(Long prerequisiteCourseId) { this.prerequisiteCourseId = prerequisiteCourseId; }
+
+    private Long termId;
+
+   public Long getTermId() { return termId; }
+   public void setTermId(Long termId) { this.termId = termId; }
 }

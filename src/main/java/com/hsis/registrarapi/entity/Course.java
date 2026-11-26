@@ -29,6 +29,10 @@ public class Course {
     @JoinColumn(name = "prerequisite_id")
     private Course prerequisite;
 
+   @com.fasterxml.jackson.annotation.JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "term_id")
+    private AcademicTerm term;
 
     public Course() {}
 
@@ -56,4 +60,7 @@ public class Course {
     
     public Course getPrerequisite() { return prerequisite; }
     public void setPrerequisite(Course prerequisite) { this.prerequisite = prerequisite; }
+
+    public AcademicTerm getTerm() { return term; }
+    public void setTerm(AcademicTerm term) { this.term = term; }
 }

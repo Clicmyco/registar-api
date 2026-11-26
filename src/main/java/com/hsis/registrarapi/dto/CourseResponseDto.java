@@ -6,8 +6,11 @@ public class CourseResponseDto {
     private String title;
     private int credits;
     private int maxCapacity;
-    private long enrolledCount;
+    private Long enrolledCount;
     private String prerequisiteCoursecode;
+    private Long termId;
+    private  String termCode;
+     private String termName;
 
     public CourseResponseDto(
             Long id,
@@ -16,7 +19,11 @@ public class CourseResponseDto {
             int credits,
             int maxCapacity,
             long enrolledCount,
-            String prerequisiteCoursecode)
+            String prerequisiteCoursecode,
+            Long termId,
+            String termCode,
+            String termName
+        )
              {
         this.id = id;
         this.courseCode = courseCode;
@@ -25,6 +32,9 @@ public class CourseResponseDto {
         this.maxCapacity = maxCapacity;
         this.enrolledCount = enrolledCount;
         this.prerequisiteCoursecode=prerequisiteCoursecode;
+        this.termId=termId;
+        this.termCode=termCode;
+        this.termName=termName;
     }
 
     public Long getId() { return id; }
@@ -34,4 +44,7 @@ public class CourseResponseDto {
     public int getMaxCapacity() { return maxCapacity; }
     public long getEnrolledCount() { return enrolledCount; }
     public String getPrerequisiteCoursecode(){return prerequisiteCoursecode ;}
+    public Long getTermId(){return termId;}
+    public String getTermCode(){return termCode;}
+    public String getTermName(){return termName;}
 }

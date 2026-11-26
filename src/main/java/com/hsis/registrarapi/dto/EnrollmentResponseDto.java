@@ -13,10 +13,12 @@ public class EnrollmentResponseDto {
     private LocalDateTime enrollmentDate;
     private String grade;
     private String advisorNote;
+    private String termCode;
+    private String termName;
     // Constructor to populate all fields at once
     public EnrollmentResponseDto(Long enrollmentId, Long courseId, String courseCode,
                                  String courseTitle, int credits, String status,
-                                 LocalDateTime enrollmentDate ,String grade,String advisorNote) {
+                                 LocalDateTime enrollmentDate ,String grade,String advisorNote, String termCode ,String termName) {
         this.enrollmentId = enrollmentId;
         this.courseId = courseId;
         this.courseCode = courseCode;
@@ -26,6 +28,8 @@ public class EnrollmentResponseDto {
         this.enrollmentDate = enrollmentDate;
         this.grade=grade;
         this.advisorNote=advisorNote;
+        this.termCode=termCode;
+        this.termName=termName;
     }
 
     // Getters (Spring uses these to convert the object into JSON)
@@ -38,6 +42,9 @@ public class EnrollmentResponseDto {
     public LocalDateTime getEnrollmentDate() { return enrollmentDate; }
     public String getGrade() { return grade; }
     public String getAdvisorNote(){return advisorNote;}
+    public String getTermCode(){return termCode;}
+    public String getTermName(){return termName;}
+   
 
     
 }

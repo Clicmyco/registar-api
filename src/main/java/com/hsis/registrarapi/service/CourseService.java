@@ -2,7 +2,9 @@ package com.hsis.registrarapi.service;
 
 import com.hsis.registrarapi.dto.CourseDto;
 import com.hsis.registrarapi.dto.CourseResponseDto;
+import com.hsis.registrarapi.entity.AcademicTerm;
 import com.hsis.registrarapi.entity.Course;
+import com.hsis.registrarapi.repository.AcademicTermRepository;
 import com.hsis.registrarapi.repository.CourseRepository;
 import com.hsis.registrarapi.repository.EnrollmentRepository;
 import org.springframework.stereotype.Service;
@@ -18,14 +20,17 @@ public class CourseService {
     private final AuditLogService auditLogService;
     private final CourseRepository courseRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final AcademicTermRepository academicTermRepository;
 
     public CourseService(
             CourseRepository courseRepository,
             EnrollmentRepository enrollmentRepository,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            AcademicTermRepository academicTermRepository) {
         this.courseRepository = courseRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.auditLogService = auditLogService;
+        this.academicTermRepository = academicTermRepository;
     }
 
     @Transactional
@@ -47,33 +52,47 @@ public class CourseService {
             newCourse.setPrerequisite(prereq);
         }
 
+        // Attach specified term, or default to the currently active term
+        AcademicTerm term = (courseData.getTermId() != null)
+                ? academicTermRepository.findById(courseData.getTermId())
+                        .orElseThrow(() -> new RuntimeException("Academic term not found."))
+                : academicTermRepository.findByActiveTrue().orElse(null);
+        newCourse.setTerm(term);
+
         Course saved = courseRepository.save(newCourse);
 
-        String prereqNote = saved.getPrerequisite() != null
-                ? " [Prereq: " + saved.getPrerequisite().getCourseCode() + "]"
-                : "";
-
+        String termNote = term != null ? " [" + term.getCode() + "]" : "";
         auditLogService.log(
                 "COURSE_CREATED",
                 "Course",
-                "Created course " + saved.getCourseCode() + " (" + saved.getTitle() + ")" + prereqNote
+                "Created course " + saved.getCourseCode() + " (" + saved.getTitle() + ")" + termNote
         );
 
         return saved;
     }
 
     @Transactional(readOnly = true)
-    public List<CourseResponseDto> getAllCourses() {
-        return courseRepository.findAll().stream()
-                .map(course -> new CourseResponseDto(
-                        course.getId(),
-                        course.getCourseCode(),
-                        course.getTitle(),
-                        course.getCredits(),
-                        course.getMaxCapacity(),
-                        enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED"),
-                        course.getPrerequisite() != null ? course.getPrerequisite().getCourseCode() : null
-                ))
+    public List<CourseResponseDto> getAllCourses(Long termId) {
+        List<Course> courses = (termId != null)
+                ? courseRepository.findByTermId(termId)
+                : courseRepository.findAll();
+
+        return courses.stream()
+                .map(course -> {
+                    AcademicTerm term = course.getTerm();
+                    return new CourseResponseDto(
+                            course.getId(),
+                            course.getCourseCode(),
+                            course.getTitle(),
+                            course.getCredits(),
+                            course.getMaxCapacity(),
+                            enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED"),
+                            course.getPrerequisite() != null ? course.getPrerequisite().getCourseCode() : null,
+                            term != null ? term.getId() : null,
+                            term != null ? term.getCode() : null,
+                            term != null ? term.getName() : null
+                    );
+                })
                 .collect(Collectors.toList());
     }
 }
