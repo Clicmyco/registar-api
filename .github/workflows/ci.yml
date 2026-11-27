@@ -1,0 +1,53 @@
+name: Backend CI (Java 21 & JUnit 5)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: registrar_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Grant execute permission for Maven Wrapper
+        run: chmod +x mvnw
+
+      - name: Run JUnit 5 Test Suite
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/registrar_db
+          DB_USERNAME: postgres
+          DB_PASSWORD: testpassword
+          JWT_SECRET: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+          MAIL_USERNAME: ci-test@university.edu
+          MAIL_APP_PASSWORD: dummy-ci-app-password
+        run: ./mvnw test
+
+      - name: Package Spring Boot JAR
+        run: ./mvnw package -DskipTests
