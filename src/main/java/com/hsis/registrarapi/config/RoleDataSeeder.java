@@ -18,7 +18,8 @@ public class RoleDataSeeder {
                     "ROLE_STUDENT",
                     "ROLE_ADVISOR",
                     "ROLE_REGISTRAR",
-                    "ROLE_ADMIN"
+                    "ROLE_ADMIN",
+                    "ROLE_INSTRUCTOR"
             );
 
             for (String roleName : defaultRoles) {
