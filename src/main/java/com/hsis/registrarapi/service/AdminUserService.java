@@ -6,6 +6,7 @@ import com.hsis.registrarapi.entity.User;
 import com.hsis.registrarapi.repository.RoleRepository;
 import com.hsis.registrarapi.repository.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
@@ -13,6 +14,14 @@ import java.util.Set;
 
 @Service
 public class AdminUserService {
+
+    private static final Set<String> VALID_ROLES = Set.of(
+            "ROLE_STUDENT",
+            "ROLE_ADVISOR",
+            "ROLE_REGISTRAR",
+            "ROLE_ADMIN",
+            "ROLE_INSTRUCTOR"
+    );
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -27,17 +36,19 @@ public class AdminUserService {
         this.auditLogService = auditLogService;
     }
 
+    @Transactional(readOnly = true)
     public List<AdminUserResponseDto> getAllUsers() {
         return userRepository.findAll().stream()
                 .map(this::toDto)
                 .toList();
     }
 
+    @Transactional
     public AdminUserResponseDto updateUserRoles(Long userId, Set<String> roleNames, String actingAdminEmail) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
 
-        // Normalize role names (accepts "REGISTRAR" or "ROLE_REGISTRAR")
+        // Normalize and validate role names (accepts "INSTRUCTOR" or "ROLE_INSTRUCTOR")
         Set<Role> resolvedRoles = new HashSet<>();
         for (String rawName : roleNames) {
             String normalized = rawName.trim().toUpperCase();
@@ -45,8 +56,17 @@ public class AdminUserService {
                 normalized = "ROLE_" + normalized;
             }
             String finalName = normalized;
+
+            if (!VALID_ROLES.contains(finalName)) {
+                throw new RuntimeException("Invalid role: " + finalName);
+            }
+
             Role role = roleRepository.findByName(finalName)
-                    .orElseThrow(() -> new RuntimeException("Invalid role: " + finalName));
+                    .orElseGet(() -> {
+                        Role newRole = new Role();
+                        newRole.setName(finalName);
+                        return roleRepository.save(newRole);
+                    });
             resolvedRoles.add(role);
         }
 
@@ -70,6 +90,7 @@ public class AdminUserService {
         return toDto(saved);
     }
 
+    @Transactional
     public AdminUserResponseDto updateUserStatus(Long userId, boolean active, String actingAdminEmail) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with ID: " + userId));
