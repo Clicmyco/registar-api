@@ -325,6 +325,27 @@ public class EnrollmentService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<CourseRosterDto> getCourseRosterForStaff(
+            Long courseId,
+            String callerEmail,
+            boolean hasFullRosterAccess) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found"));
+
+        if (!hasFullRosterAccess) {
+            boolean isAssignedInstructor = course.getInstructor() != null
+                    && course.getInstructor().getEmail().equalsIgnoreCase(callerEmail);
+            if (!isAssignedInstructor) {
+                throw new RuntimeException(
+                        "Access denied: You are not the assigned instructor for " + course.getCourseCode() + "."
+                );
+            }
+        }
+
+        return getCourseRoster(courseId);
+    }
+
     @Transactional
     public void assignGrade(Long enrollmentId, String rawGrade) {
         Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
@@ -354,6 +375,29 @@ public class EnrollmentService {
                 "Assigned grade " + normalized + " to " + enrollment.getUser().getEmail()
                         + " in " + enrollment.getCourse().getCourseCode()
         );
+    }
+
+    @Transactional
+    public void assignGradeForStaff(
+            Long enrollmentId,
+            String rawGrade,
+            String callerEmail,
+            boolean isAdminOrRegistrar) {
+        Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
+                .orElseThrow(() -> new RuntimeException("Enrollment record not found."));
+
+        Course course = enrollment.getCourse();
+        if (!isAdminOrRegistrar) {
+            boolean isAssignedInstructor = course.getInstructor() != null
+                    && course.getInstructor().getEmail().equalsIgnoreCase(callerEmail);
+            if (!isAssignedInstructor) {
+                throw new RuntimeException(
+                        "Access denied: You can only submit grades for your assigned courses."
+                );
+            }
+        }
+
+        assignGrade(enrollmentId, rawGrade);
     }
 
     @Transactional(readOnly = true)

@@ -3,21 +3,22 @@ package com.hsis.registrarapi.controller;
 import com.hsis.registrarapi.dto.CourseRosterDto;
 import com.hsis.registrarapi.dto.EnrollmentRequestDto;
 import com.hsis.registrarapi.dto.EnrollmentResponseDto;
+import com.hsis.registrarapi.dto.EnrollmentReviewRequest;
 import com.hsis.registrarapi.dto.GradeUpdateDto;
+import com.hsis.registrarapi.dto.PendingEnrollmentDto;
+import com.hsis.registrarapi.dto.TranscriptDto;
+import com.hsis.registrarapi.entity.Enrollment;
 import com.hsis.registrarapi.service.EnrollmentService;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import com.hsis.registrarapi.dto.EnrollmentReviewRequest;
-import com.hsis.registrarapi.dto.PendingEnrollmentDto;
-import jakarta.validation.Valid;
+
 import java.security.Principal;
+import java.util.Arrays;
 import java.util.List;
-import com.hsis.registrarapi.dto.TranscriptDto;
-
-
-
-
 
 @RestController
 @RequestMapping("/api/enrollments")
@@ -34,8 +35,14 @@ public class EnrollmentController {
     @PostMapping
     public ResponseEntity<?> enrollInCourse(@RequestBody EnrollmentRequestDto requestData, Principal principal) {
         try {
-            enrollmentService.enrollStudent(principal.getName(), requestData.getCourseId());
-            return ResponseEntity.ok("Enrollment Request Submmitted for advisor approval");
+            Enrollment saved = enrollmentService.enrollStudent(principal.getName(), requestData.getCourseId());
+            if ("WAITLISTED".equalsIgnoreCase(saved.getStatus())) {
+                return ResponseEntity.ok(
+                        "Course is currently full. You have been added to the waitlist for "
+                                + saved.getCourse().getCourseCode() + "."
+                );
+            }
+            return ResponseEntity.ok("Enrollment request submitted for advisor approval.");
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -61,33 +68,54 @@ public class EnrollmentController {
         }
     }
 
-    // Only Admins can view the full student roster for a course
-    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR','ADVISOR')")
+    // Staff & assigned Instructors can view a course roster
+    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR','ADVISOR','INSTRUCTOR')")
     @GetMapping("/course/{courseId}")
-    public ResponseEntity<?> getCourseRoster(@PathVariable Long courseId) {
+    public ResponseEntity<?> getCourseRoster(@PathVariable Long courseId, Authentication authentication) {
         try {
-            List<CourseRosterDto> roster = enrollmentService.getCourseRoster(courseId);
+            boolean hasFullRosterAccess = hasAnyAuthority(
+                    authentication, "ROLE_ADMIN", "ROLE_REGISTRAR", "ROLE_ADVISOR"
+            );
+            List<CourseRosterDto> roster = enrollmentService.getCourseRosterForStaff(
+                    courseId,
+                    authentication.getName(),
+                    hasFullRosterAccess
+            );
             return ResponseEntity.ok(roster);
         } catch (RuntimeException e) {
-            return ResponseEntity.status(404).body(e.getMessage());
+            if (e.getMessage() != null && e.getMessage().startsWith("Access denied")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+            }
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 
-    // Only Admins can assign official grades
-    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR')")
+    // Admins, Registrars, and assigned Instructors can submit grades
+    @PreAuthorize("hasAnyRole('ADMIN','REGISTRAR','INSTRUCTOR')")
     @PutMapping("/{enrollmentId}/grade")
     public ResponseEntity<?> assignGrade(
             @PathVariable Long enrollmentId,
-            @RequestBody GradeUpdateDto request) {
+            @RequestBody GradeUpdateDto request,
+            Authentication authentication) {
         try {
-            enrollmentService.assignGrade(enrollmentId, request.getGrade());
+            boolean isAdminOrRegistrar = hasAnyAuthority(
+                    authentication, "ROLE_ADMIN", "ROLE_REGISTRAR"
+            );
+            enrollmentService.assignGradeForStaff(
+                    enrollmentId,
+                    request.getGrade(),
+                    authentication.getName(),
+                    isAdminOrRegistrar
+            );
             return ResponseEntity.ok("Grade updated successfully.");
         } catch (RuntimeException e) {
+            if (e.getMessage() != null && e.getMessage().startsWith("Access denied")) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
+            }
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
-    
     // Advisors, Registrars, and Admins view all pending enrollment requests
     @PreAuthorize("hasAnyRole('ADVISOR', 'REGISTRAR', 'ADMIN')")
     @GetMapping("/pending")
@@ -137,4 +165,10 @@ public class EnrollmentController {
         }
     }
 
+    private boolean hasAnyAuthority(Authentication authentication, String... roles) {
+        if (authentication == null) return false;
+        List<String> targetRoles = Arrays.asList(roles);
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> targetRoles.contains(a.getAuthority()));
+    }
 }

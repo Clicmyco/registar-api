@@ -4,9 +4,11 @@ import com.hsis.registrarapi.dto.CourseDto;
 import com.hsis.registrarapi.dto.CourseResponseDto;
 import com.hsis.registrarapi.entity.AcademicTerm;
 import com.hsis.registrarapi.entity.Course;
+import com.hsis.registrarapi.entity.User;
 import com.hsis.registrarapi.repository.AcademicTermRepository;
 import com.hsis.registrarapi.repository.CourseRepository;
 import com.hsis.registrarapi.repository.EnrollmentRepository;
+import com.hsis.registrarapi.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,16 +23,19 @@ public class CourseService {
     private final CourseRepository courseRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final AcademicTermRepository academicTermRepository;
+    private final UserRepository userRepository;
 
     public CourseService(
             CourseRepository courseRepository,
             EnrollmentRepository enrollmentRepository,
             AuditLogService auditLogService,
-            AcademicTermRepository academicTermRepository) {
+            AcademicTermRepository academicTermRepository,
+            UserRepository userRepository) {
         this.courseRepository = courseRepository;
         this.enrollmentRepository = enrollmentRepository;
         this.auditLogService = auditLogService;
         this.academicTermRepository = academicTermRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional
@@ -72,6 +77,12 @@ public class CourseService {
                 : academicTermRepository.findByActiveTrue().orElse(null);
         newCourse.setTerm(term);
 
+        if (courseData.getInstructorId() != null) {
+            User instructor = userRepository.findById(courseData.getInstructorId())
+                    .orElseThrow(() -> new RuntimeException("Assigned instructor not found."));
+            newCourse.setInstructor(instructor);
+        }
+
         Course saved = courseRepository.save(newCourse);
 
         String termNote = term != null ? " [" + term.getCode() + "]" : "";
@@ -91,26 +102,68 @@ public class CourseService {
                 : courseRepository.findAll();
 
         return courses.stream()
-                .map(course -> {
-                    AcademicTerm term = course.getTerm();
-                    return new CourseResponseDto(
-                            course.getId(),
-                            course.getCourseCode(),
-                            course.getTitle(),
-                            course.getCredits(),
-                            course.getMaxCapacity(),
-                            enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED"),
-                            course.getPrerequisite() != null ? course.getPrerequisite().getCourseCode() : null,
-                            term != null ? term.getId() : null,
-                            term != null ? term.getCode() : null,
-                            term != null ? term.getName() : null,
-                            course.getMeetingDays(),
-                            course.getStartTime(),
-                            course.getEndTime(),
-                            course.getRoom(),
-                            enrollmentRepository.countByCourseIdAndStatus(course.getId(), "WAITLISTED")
-                    );
-                })
+                .map(this::mapToResponseDto)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CourseResponseDto> getCoursesByInstructor(String email) {
+        return courseRepository.findByInstructorEmail(email).stream()
+                .map(this::mapToResponseDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public CourseResponseDto assignInstructor(Long courseId, Long instructorId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new RuntimeException("Course not found."));
+
+        if (instructorId == null) {
+            course.setInstructor(null);
+            Course saved = courseRepository.save(course);
+            auditLogService.log(
+                    "INSTRUCTOR_UNASSIGNED",
+                    "Course",
+                    "Removed instructor from " + saved.getCourseCode()
+            );
+            return mapToResponseDto(saved);
+        }
+
+        User instructor = userRepository.findById(instructorId)
+                .orElseThrow(() -> new RuntimeException("Instructor user not found."));
+        course.setInstructor(instructor);
+        Course saved = courseRepository.save(course);
+
+        auditLogService.log(
+                "INSTRUCTOR_ASSIGNED",
+                "Course",
+                "Assigned " + instructor.getEmail() + " to teach " + saved.getCourseCode()
+        );
+        return mapToResponseDto(saved);
+    }
+
+    private CourseResponseDto mapToResponseDto(Course course) {
+        AcademicTerm term = course.getTerm();
+        User instructor = course.getInstructor();
+        return new CourseResponseDto(
+                course.getId(),
+                course.getCourseCode(),
+                course.getTitle(),
+                course.getCredits(),
+                course.getMaxCapacity(),
+                enrollmentRepository.countByCourseIdAndStatus(course.getId(), "ENROLLED"),
+                course.getPrerequisite() != null ? course.getPrerequisite().getCourseCode() : null,
+                term != null ? term.getId() : null,
+                term != null ? term.getCode() : null,
+                term != null ? term.getName() : null,
+                course.getMeetingDays(),
+                course.getStartTime(),
+                course.getEndTime(),
+                course.getRoom(),
+                enrollmentRepository.countByCourseIdAndStatus(course.getId(), "WAITLISTED"),
+                instructor != null ? instructor.getId() : null,
+                instructor != null ? instructor.getFullName() : null,
+                instructor != null ? instructor.getEmail() : null
+        );
     }
 }

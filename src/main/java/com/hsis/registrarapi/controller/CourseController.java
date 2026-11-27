@@ -39,4 +39,19 @@ public ResponseEntity<Course> createCourse(@Valid @RequestBody CourseDto courseD
         List<CourseResponseDto> courses = courseService.getAllCourses(termId);
         return ResponseEntity.ok(courses);
     }
+
+    @GetMapping("/my-teaching")
+ @PreAuthorize("hasAnyRole('INSTRUCTOR', 'ADMIN', 'REGISTRAR')")
+ public ResponseEntity<List<CourseResponseDto>> getMyTeachingCourses(java.security.Principal principal) {
+     return ResponseEntity.ok(courseService.getCoursesByInstructor(principal.getName()));
+ }
+
+ @PutMapping("/{courseId}/instructor")
+ @PreAuthorize("hasAnyRole('ADMIN', 'REGISTRAR')")
+ public ResponseEntity<CourseResponseDto> assignInstructor(
+         @PathVariable Long courseId,
+         @RequestBody(required = false) java.util.Map<String, Long> body) {
+     Long instructorId = (body != null) ? body.get("instructorId") : null;
+     return ResponseEntity.ok(courseService.assignInstructor(courseId, instructorId));
+ }
 }

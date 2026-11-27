@@ -60,4 +60,9 @@ public void setMaxCapacity(Integer maxCapacity) { this.maxCapacity = maxCapacity
 
    public Long getTermId() { return termId; }
    public void setTermId(Long termId) { this.termId = termId; }
+
+   private Long instructorId;
+
+    public Long getInstructorId() { return instructorId; }
+    public void setInstructorId(Long instructorId) { this.instructorId = instructorId; }
 }

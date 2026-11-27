@@ -19,6 +19,9 @@ public class CourseResponseDto {
     private LocalTime endTime;
     private String room;
     private long waitlistCount;
+    private Long instructorId;
+    private String instructorName;
+    private String instructorEmail;
 
     public CourseResponseDto(
             Long id,
@@ -36,6 +39,31 @@ public class CourseResponseDto {
             LocalTime endTime,
             String room,
             long waitlistCount) {
+        this(id, courseCode, title, credits, maxCapacity, enrolledCount,
+                prerequisiteCourseCode, termId, termCode, termName,
+                meetingDays, startTime, endTime, room, waitlistCount,
+                null, null, null);
+    }
+
+    public CourseResponseDto(
+            Long id,
+            String courseCode,
+            String title,
+            int credits,
+            int maxCapacity,
+            long enrolledCount,
+            String prerequisiteCourseCode,
+            Long termId,
+            String termCode,
+            String termName,
+            String meetingDays,
+            LocalTime startTime,
+            LocalTime endTime,
+            String room,
+            long waitlistCount,
+            Long instructorId,
+            String instructorName,
+            String instructorEmail) {
         this.id = id;
         this.courseCode = courseCode;
         this.title = title;
@@ -51,6 +79,9 @@ public class CourseResponseDto {
         this.endTime = endTime;
         this.room = room;
         this.waitlistCount = waitlistCount;
+        this.instructorId = instructorId;
+        this.instructorName = instructorName;
+        this.instructorEmail = instructorEmail;
     }
 
     public Long getId() { return id; }
@@ -68,4 +99,7 @@ public class CourseResponseDto {
     public LocalTime getEndTime() { return endTime; }
     public String getRoom() { return room; }
     public long getWaitlistCount() { return waitlistCount; }
+    public Long getInstructorId() { return instructorId; }
+    public String getInstructorName() { return instructorName; }
+    public String getInstructorEmail() { return instructorEmail; }
 }

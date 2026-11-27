@@ -46,6 +46,10 @@ public class Course {
     @Column(length = 50)
     private String room;
 
+     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "instructor_id")
+    private User instructor;
+
     public Course() {}
 
     // Getters and Setters
@@ -87,4 +91,7 @@ public class Course {
 
     public String getRoom() { return room; }
     public void setRoom(String room) { this.room = room; }
+
+    public User getInstructor() { return instructor; }
+    public void setInstructor(User instructor) { this.instructor = instructor; }
 }
