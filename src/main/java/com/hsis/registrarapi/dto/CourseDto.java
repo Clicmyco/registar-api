@@ -16,6 +16,8 @@ private int credits;
 @Min(value = 1, message = "Seat capacity must be at least 1")
 @Max(value = 500, message = "Seat capacity cannot exceed 500")
 private int maxCapacity;
+
+
     public CourseDto() {}
 
     private Long prerequisiteCourseId;
