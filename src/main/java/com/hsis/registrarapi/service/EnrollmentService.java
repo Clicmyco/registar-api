@@ -49,24 +49,29 @@ public class EnrollmentService {
     private final UserRepository userRepository;
     private final CourseRepository courseRepository;
     private final AuditLogService auditLogService;
+    private final AcademicHoldService academicHoldService;
 
     public EnrollmentService(
             EnrollmentRepository enrollmentRepository,
             UserRepository userRepository,
             CourseRepository courseRepository,
             AuditLogService auditLogService,
-            AcademicTermRepository academicTermRepository) {
+            AcademicTermRepository academicTermRepository,
+            AcademicHoldService academicHoldService) {
         this.enrollmentRepository = enrollmentRepository;
         this.userRepository = userRepository;
         this.courseRepository = courseRepository;
         this.auditLogService = auditLogService;
         this.academicTermRepository = academicTermRepository;
+        this.academicHoldService=academicHoldService;
     }
 
     @Transactional
     public Enrollment enrollStudent(String email, Long courseId) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+                academicHoldService.assertNoActiveHolds(user.getId());
 
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new RuntimeException("Course not found"));
