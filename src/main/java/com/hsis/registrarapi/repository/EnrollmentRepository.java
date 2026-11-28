@@ -20,6 +20,8 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     // Count only active ENROLLED students (excludes DROPPED records)
     long countByCourseIdAndStatus(Long courseId, String status);
     List<Enrollment> findByStatusOrderByEnrollmentDateAsc(String status);
+    
+   
 
     java.util.List<com.hsis.registrarapi.entity.Enrollment> findByCourseIdAndStatusOrderByEnrollmentDateAsc(
             Long courseId,
