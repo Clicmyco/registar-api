@@ -17,6 +17,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.hsis.registrarapi.service.AcademicHoldService;
+
+
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -46,6 +49,9 @@ class EnrollmentServiceTest {
 
     @Mock
     private AcademicTermRepository academicTermRepository;
+
+    @Mock
+    private AcademicHoldService academicHoldService;
 
     @InjectMocks
     private EnrollmentService enrollmentService;
