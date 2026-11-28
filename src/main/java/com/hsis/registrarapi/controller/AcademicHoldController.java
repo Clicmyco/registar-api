@@ -3,7 +3,9 @@ package com.hsis.registrarapi.controller;
 import com.hsis.registrarapi.dto.AcademicHoldDto;
 import com.hsis.registrarapi.dto.PlaceHoldRequestDto;
 import com.hsis.registrarapi.dto.StudentLookupDto;
+import com.hsis.registrarapi.dto.TranscriptDto;
 import com.hsis.registrarapi.service.AcademicHoldService;
+import com.hsis.registrarapi.service.EnrollmentService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,9 +20,13 @@ import java.util.Map;
 public class AcademicHoldController {
 
     private final AcademicHoldService academicHoldService;
+    private final EnrollmentService enrollmentService;
 
-    public AcademicHoldController(AcademicHoldService academicHoldService) {
+    public AcademicHoldController(
+            AcademicHoldService academicHoldService,
+            EnrollmentService enrollmentService) {
         this.academicHoldService = academicHoldService;
+        this.enrollmentService = enrollmentService;
     }
 
     @GetMapping("/my-holds")
@@ -46,6 +52,12 @@ public class AcademicHoldController {
     @PreAuthorize("hasAnyRole('ADMIN', 'REGISTRAR', 'ADVISOR')")
     public ResponseEntity<List<AcademicHoldDto>> getStudentHolds(@PathVariable Long studentId) {
         return ResponseEntity.ok(academicHoldService.getStudentHolds(studentId));
+    }
+
+    @GetMapping("/student/{studentId}/transcript")
+    @PreAuthorize("hasAnyRole('ADMIN', 'REGISTRAR', 'ADVISOR')")
+    public ResponseEntity<TranscriptDto> getStudentTranscript(@PathVariable Long studentId) {
+        return ResponseEntity.ok(enrollmentService.getStudentTranscriptByUserId(studentId));
     }
 
     @PostMapping
